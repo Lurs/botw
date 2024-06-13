@@ -48,3 +48,5 @@ tools/listsym
 tools/decompme
 
 docs/build
+classgen-dump
+types.json

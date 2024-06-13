@@ -33,9 +33,11 @@ public:
         u32 _6c;
     };
     KSYS_CHECK_SIZE_NX150(InitArg, 0x70);
+    bool mDoNotSave;
 
     void init(const InitArg& arg);
     void loadGameSaveData();
+    
 };
 
 }  // namespace ksys
