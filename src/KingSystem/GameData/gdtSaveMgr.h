@@ -5,6 +5,7 @@
 #include <mc/seadCoreInfo.h>
 #include <prim/seadSafeString.h>
 #include "KingSystem/Utils/Types.h"
+#include "thread/seadThread.h"
 
 namespace ksys {
 
@@ -13,7 +14,6 @@ class SaveMgr {
     SEAD_SINGLETON_DISPOSER(SaveMgr)
     SaveMgr();
     virtual ~SaveMgr();
-
 public:
     struct InitArg {
         sead::Heap* heap;
@@ -34,9 +34,22 @@ public:
     };
     KSYS_CHECK_SIZE_NX150(InitArg, 0x70);
     bool mDoNotSave;
+    
 
     void init(const InitArg& arg);
+    void mountSaveData(const InitArg& arg);
     void loadGameSaveData();
+private:
+    sead::Heap* mSaveAreaHeap = nullptr;
+    u64 mSaveBufSize;
+    u32 _8;
+    sead::Thread* mThread;
+    u32 mState = 3;
+    void* mBuf3 = nullptr;
+    void* mFieldE30 = nullptr;
+    u32 mFieldE38 = 0;
+    u32 mFieldF8 = 0;
+    bool mIsRidDemo = false;
     
 };
 
