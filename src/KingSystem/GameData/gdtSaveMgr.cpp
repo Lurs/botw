@@ -11,79 +11,78 @@ namespace ksys {
 
     void SaveMgr::init(const InitArg& arg) {
        
-       mDoNotSave= arg.is_demo;
-        auto heap_size = (int32_t) arg._8;
+        mDoNotSave = arg.is_demo;
+        bool* p_doNotMountSave = &mDoNotSave;
+        auto heap_size = static_cast<s32>(arg._8) ;
+
         mSaveAreaHeap = util::DualHeap::create(heap_size,sead::SafeString("SaveMgr"), arg.heap,arg._60,
           sizeof(void*), sead::Heap::cHeapDirection_Forward, false);
+        //int v6 = arg._68;
         u32 temp_68 = arg._68;
-        u64 buf_size;
-        u32 size;
-        u64 alignment;
-        void *buffer;
-        sead::Heap* heap = nullptr;
-        sead::Heap* debug_heap2 = util::getDebugHeap2();
+        sead::Heap* debug_heap2 = ksys::util::getDebugHeap2();
+        //bool v8 = (v6 != 0) && (DebugHeap2 != nullptr);
         bool use_Debug_Heap = debug_heap2 != nullptr && temp_68 != 0;
+
+        char* buffer;
         if (use_Debug_Heap) {
-            mSaveAreaHeap->tryAlloc(Casting(arg.buf_size), (s32) arg.buf_alignment);
-            //(sead::Buffer<sead::Heap*>) mSaveAreaHeap->tryAllocBuffer(arg.buf_size, mSaveAreaHeap, (s32) arg.buf_alignment);
+            mSaveAreaHeap->tryAlloc(static_cast<s32>(arg.buf_size), static_cast<s32>(arg.buf_alignment));
 
-            size = arg.buf_size + temp_68;
-            mSaveBufSize = size;
-            alignment = arg.buf_alignment;
-            heap = debug_heap2;
-        }
-        else {
+            mSaveBufSize = arg.buf_size + temp_68;
+            buffer = static_cast<char*>(operator new[](mSaveBufSize, debug_heap2, static_cast<s32>(arg.buf_alignment)));
+        } else {
             mSaveBufSize = arg.buf_size;
-            size = arg.buf_size;           
-            heap = mSaveAreaHeap;
-            alignment = arg.buf_alignment;
+            buffer = static_cast<char*>(operator new[](mSaveBufSize, mSaveAreaHeap, static_cast<s32>(arg.buf_alignment)));
         }
-
-        buffer = operator new[](size, heap, alignment);
-        buf_size = mSaveBufSize;
         mSaveBuf = buffer;
-        //sead::MemUtil::fillZero(mSaveAreaHeap, mSaveBufSize);
-        std::memset(buffer, 0, buf_size);
+        memset(mSaveBuf, 0, mSaveBufSize);
 
         mFieldE20 = operator new[](0x100, mSaveAreaHeap, 8);
-        //std::memset(mFieldE20, 0, 0x100);
 
-        mFieldE30 = operator new[](static_cast<int64_t>(static_cast<int32_t>(arg.size2)), mSaveAreaHeap, (s32) arg.buf_alignment);
-        
-        std::memset(mFieldE30, 0, arg.size2);
+        void* buffer2 = operator new[](static_cast<s64>(static_cast<s32>(arg.size2)), mSaveAreaHeap, static_cast<s32>(arg.buf_alignment));
+        mFieldE30 = buffer2;
+        memset(buffer2, 0, static_cast<s64>(static_cast<s32>(arg.size2)));
+
         mFieldE38 = arg.size2;
 
-        //heap = mSaveAreaHeap;
-       
-        mThread= new sead::DelegateThread(
-            "SaveMgrThread", new (mSaveAreaHeap) sead::Delegate2 <SaveMgr, sead::Thread*,sead::MessageQueue::Element>(
-            this, &SaveMgr::SaveMgrThread),
+        // Allocate memory for the thread using operator new (thread = operator new(0x108uLL, v16, 8);)
+        void* thread = operator new(0x108uLL, mSaveAreaHeap, 8);
+
+        sead::SafeString thread_name("SaveMgrThread");
+
+        // Create Delegate2 with the correct member function pointer
+        auto* params = new (mSaveAreaHeap) sead::Delegate2<SaveMgr, sead::Thread*, sead::MessageQueue::Element>(
+            this, &SaveMgr::SaveMgrThread);
+
+        // Create the DelegateThread using the allocated memory and initialized parameters
+        mThread = new (thread) sead::DelegateThread(
+            thread_name,
+            params,
             mSaveAreaHeap,
-            (s32) arg.thread_priority,sead::MessageQueue::BlockType::Blocking,
-            0x7fffffff, (s32) arg._1c, 0x20);
+            static_cast<s32>(arg.thread_priority),
+            sead::MessageQueue::BlockType::Blocking,
+            0x7fffffff,
+            static_cast<s32>(arg._1c),
+            0x20
+        );
         mThread->setAffinity(arg.thread_affinity);
         mThread->start();
         mountSaveData(arg);
         mState = 0;
 
-        if (mDoNotSave) {
+        if (*p_doNotMountSave) {
             mIsRidDemo = arg.save_rid_demo_dir.isEmpty();
             if (use_Debug_Heap) {
-                mSaveAreaHeap->tryAlloc(static_cast<int64_t>(static_cast<int32_t>(arg.buf_size)), (s32)arg.buf_alignment);
-                //buf_size = mSaveBufSize;
-                heap = debug_heap2;
+                mSaveAreaHeap->tryAlloc(static_cast<s32>(static_cast<s32>(arg.buf_size)), static_cast<s32>(arg.buf_alignment));
+                mSaveBuf3 = operator new[](mSaveBufSize, debug_heap2, static_cast<s32>(arg.buf_alignment));
+            } else {
+                mSaveBuf3 = operator new[](mSaveBufSize, mSaveAreaHeap, static_cast<s32>(arg.buf_alignment));
             }
-            else {
-                heap = mSaveAreaHeap;
-                //buf_size = mSaveBufSize;
-            }
-            buffer = operator new[](mSaveBufSize, heap, arg.buf_alignment);
-            mSaveBuf3 = buffer;
-            std::memset(buffer, 0,mSaveBufSize);
+            memset(mSaveBuf3, 0, mSaveBufSize);
+        } else {
+            mIsRidDemo = 0;
         }
-        else {
-            mIsRidDemo = false;
-        }
+
+        this->mFieldF8 = 1;
     
     }
 
@@ -107,9 +106,7 @@ namespace ksys {
         }
     }
 
-    u64 SaveMgr::Casting(u32 arg) const {
-        return static_cast<int64_t>(static_cast<int32_t>(arg));
-    }
+
     
 
 }
