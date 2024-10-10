@@ -10,6 +10,7 @@
 #include <thread/seadMutex.h>
 #include <type_traits>
 #include "KingSystem/GameData/gdtFlagHandle.h"
+//#include "KingSystem/GameData/gdtSaveMgr.h"
 #include "KingSystem/GameData/gdtTriggerParam.h"
 #include "KingSystem/Resource/resHandle.h"
 #include "KingSystem/System/CoreInfo.h"
@@ -233,6 +234,8 @@ public:
 
     void init(sead::Heap* heap, sead::Framework* framework);
     void calc();
+    void calc0();
+    void calc1();
 
     void addReinitCallback(ReinitSignal::Slot& slot);
     void removeReinitCallback(ReinitSignal::Slot& slot);
@@ -313,7 +316,7 @@ public:
     /* Setters (by handle) */                                                                      \
     KSYS_ALWAYS_INLINE bool NAME(TRAITS::ArgType value, FlagHandle handle, bool debug,             \
                                  bool force) {                                                     \
-        if (mBitFlags.isOn(BitFlag::_40000))                                                       \
+        if (mBitFlags.isOn(BitFlag::DisableParam1ToParamSync))                                                       \
             return false;                                                                          \
         return unwrapHandle<true>(handle, debug, [&](u32 idx, TriggerParamRef& ref) {              \
             return ref.get().NAME(value, idx, force);                                              \
@@ -331,7 +334,7 @@ public:
     /* Setters for arrays (by handle) */                                                           \
     KSYS_ALWAYS_INLINE bool NAME(TRAITS::ArgType value, FlagHandle handle, bool debug, bool force, \
                                  s32 sub_idx) {                                                    \
-        if (mBitFlags.isOn(BitFlag::_40000))                                                       \
+        if (mBitFlags.isOn(BitFlag::DisableParam1ToParamSync))                                                       \
             return false;                                                                          \
         return unwrapHandle<true>(handle, debug, [&](u32 idx, TriggerParamRef& ref) {              \
             return ref.get().NAME(value, idx, sub_idx, force);                                     \
@@ -349,7 +352,7 @@ public:
     /* Setters (by name) */                                                                        \
     KSYS_ALWAYS_INLINE bool NAME(TRAITS::ArgType value, const sead::SafeString& name, bool debug,  \
                                  bool force) {                                                     \
-        if (mBitFlags.isOn(BitFlag::_40000))                                                       \
+        if (mBitFlags.isOn(BitFlag::DisableParam1ToParamSync))                                                       \
             return false;                                                                          \
         auto& ref = debug ? getParamBypassPerm() : getParam();                                     \
         return ref.get().NAME(value, name, force);                                                 \
@@ -362,7 +365,7 @@ public:
     /* Setters for arrays (by name) */                                                             \
     KSYS_ALWAYS_INLINE bool NAME(TRAITS::ArgType value, const sead::SafeString& name, bool debug,  \
                                  bool force, s32 sub_idx) {                                        \
-        if (mBitFlags.isOn(BitFlag::_40000))                                                       \
+        if (mBitFlags.isOn(BitFlag::DisableParam1ToParamSync))                                                       \
             return false;                                                                          \
         auto& ref = debug ? getParamBypassPerm() : getParam();                                     \
         return ref.get().NAME(value, name, sub_idx, force);                                        \
@@ -430,7 +433,7 @@ public:
     bool NAME##_(const sead::SafeString& name);                                                    \
     bool NAME(const sead::SafeString& name, int sub_idx);                                          \
     KSYS_ALWAYS_INLINE bool NAME##_(FlagHandle handle, bool debug) {                               \
-        if (mBitFlags.isOn(BitFlag::_40000))                                                       \
+        if (mBitFlags.isOn(BitFlag::DisableParam1ToParamSync))                                                       \
             return false;                                                                          \
         return unwrapHandle<false>(                                                                \
             handle, debug, [&](u32 idx, TriggerParamRef& ref) { return ref.get().NAME(idx); });    \
@@ -439,7 +442,7 @@ public:
     inline bool NAME##NoCheck(FlagHandle handle) { return NAME##_(handle, true); }                 \
                                                                                                    \
     KSYS_ALWAYS_INLINE bool NAME##_(FlagHandle handle, bool debug, s32 sub_idx) {                  \
-        if (mBitFlags.isOn(BitFlag::_40000))                                                       \
+        if (mBitFlags.isOn(BitFlag::DisableParam1ToParamSync))                                                       \
             return false;                                                                          \
         return unwrapHandle<false>(handle, debug, [&](u32 idx, TriggerParamRef& ref) {             \
             return ref.get().NAME(idx, sub_idx);                                                   \
@@ -515,7 +518,7 @@ public:
     const u32* getShopSoldOutInfoHashes() const { return mShopSoldOutInfoHashes; }
 
     void onAnimalMasterAppearance() {
-        mBitFlags.set(BitFlag::_8);
+        mBitFlags.set(BitFlag::NeedReset);
         mResetFlags.set(ResetFlag::AnimalMaster);
     }
 
@@ -524,24 +527,25 @@ private:
         _1 = 0x1,
         _2 = 0x2,
         RequestResetAllFlagsToInitial = 0x4,
-        _8 = 0x8,
-        _10 = 0x10,
-        _20 = 0x20,
+        NeedReset = 0x8,
+        NeedGimmickReset = 0x10,
+        NeedCopyGimmickParam = 0x20,
         _40 = 0x40,
         _80 = 0x80,
         _100 = 0x100,
         _200 = 0x200,
         SyncFlags = _100 | _200,
         _400 = 0x400,
-        _800 = 0x800,
+        IsChangedByDebugMaybe = 0x800,
         _1000 = 0x1000,
         _2000 = 0x2000,
         _4000 = 0x4000,
         _8000 = 0x8000,
         _10000 = 0x10000,
         _20000 = 0x20000,
-        _40000 = 0x40000,
-        _80000 = 0x80000,
+        DisableParam1ToParamSync = 0x40000,
+        IsRestartFromGameOverMaybe = 0x80000,
+        DoNotResetToInitialFromRadarMgr = 0x100000,
     };
 
     enum class ResetFlag {
@@ -598,7 +602,7 @@ private:
 
     void onChangedByDebug() {
         setBool(true, "IsChangedByDebug");
-        mBitFlags.set(BitFlag::_800);
+        mBitFlags.set(BitFlag::IsChangedByDebugMaybe);
     }
 
     void loadGameData(const sead::SafeString& path);

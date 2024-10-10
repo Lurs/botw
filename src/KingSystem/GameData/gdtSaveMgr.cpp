@@ -7,10 +7,14 @@
 #include "thread/seadMessageQueue.h"
 #include "thread/seadThread.h"
 #include "KingSystem/GameData/gdtManager.h"
+#include <prim/seadTypedBitFlag.h>
+#include "prim/seadBitFlag.h"
 
 namespace ksys {
 
 SEAD_SINGLETON_DISPOSER_IMPL(SaveMgr)
+
+//SaveMgr::SaveMgr() = default;
 
 void SaveMgr::init(const InitArg& arg) {
     mDoNotSave_105B = arg.is_demo;
@@ -46,7 +50,7 @@ void SaveMgr::init(const InitArg& arg) {
 
     mField_E38 = arg.size2;
 
-    mThread = new (mSaveAreaHeap, 8) sead::DelegateThread(
+    mThread = new (mSaveAreaHeap) sead::DelegateThread(
         sead::SafeString ("SaveMgrThread"),
         new (mSaveAreaHeap) sead::Delegate2<SaveMgr, sead::Thread*, sead::MessageQueue::Element>(
             this, &SaveMgr::SaveMgrThread),
@@ -111,27 +115,26 @@ void SaveMgr::SaveMgrThreadCmd1() {
     // Step 1: Check if gdt::Manager instance exists
     auto* gdt_manager = gdt::Manager::instance();
     if (gdt_manager) {
-        // Retrieve TriggerParam using public methods
-        mTriggerParam_F98 = gdt_manager->getParam().get().getBuffer();
+        // Retrieve TriggerParam from gdt manager instance
+        gdt::TriggerParam* flagbuffer = gdt_manager->getParam().get().getBuffer();
 
-        // Reset all flags to initial values using the TriggerParam instance
-        if (mTriggerParam_F98) {
-            mTriggerParam_F98->resetAllFlagsToInitialValues();
-        }
+        mTriggerParam_F98 = flagbuffer;
+        flagbuffer->resetAllFlagsToInitialValues();
+        flagbuffer = mTriggerParam_F98;        
 
         // Iterate over mField_FF0 linked list
-        auto* current = static_cast<SaveCallback*>(mField_FF0);
-        auto* end = static_cast<SaveCallback*>(mField_FE8);
+        SaveMgr* current = mField_FF0;
+        SaveMgr* end = mField_FE8;
 
         if (current != end) {
             do {
-                auto& disposer = current->mDisposer;
-                if (disposer.o.heap && disposer.o.heap->size) {
-                    disposer.o.heap->size->invoke(this); // Pass 'this' as context
-                }
-                current = current->next;
+            // Check if there is a way to perform necessary operations with disposer
+            // Instead of accessing heap directly, call deleteInstance() directly if conditions are met
+                current->deleteInstance();
+                current = current->mField_FE8;
             } while (current != end);
         }
+        
 
         // Set mField_1050 to zero
         mField_1050 = 0;
@@ -181,8 +184,6 @@ void SaveMgr::SaveMgrThreadCmd1() {
                 }
             }
         }
-
-        // Proceed with the rest of the function
     }
 
     // Step 3: Continue with the rest of the function
@@ -197,31 +198,50 @@ void SaveMgr::SaveMgrThreadCmd1() {
         gdt_manager->copyParamToParam1();
 
         // Clear bit 0 (value 1) in flags using public methods
-        gdt_manager->resetBitFlag(gdt::Manager::BitFlag::_1);
+       // gdt_manager->set(0x1);
 
         // Reset changeOnlyOnce flags
-        gdt_manager->setChangeOnlyOnce(false);
+        //gdt_manager->setChangeOnlyOnce(false);
+        //gdt_manager->flag
     }
 
     // Iterate over mFinishLoadCbs_1000 linked list
-    auto* current_cb = static_cast<SaveCallback*>(mFinishLoadCbs_1000.next);
-    auto* end_cb = static_cast<SaveCallback*>(&mFinishLoadCbs_1000);
+   /* auto* current_cb = &mFinishLoadCbs_1000;
+    auto* end_cb = &mFinishLoadCbs_1000; 
 
-    if (current_cb != end_cb) {
+    CallbackNode* next = mFinishLoadCbs.front();
+    if (next != nullptr) {
         do {
-            auto& disposer = current_cb->mDisposer;
-            if (disposer.o.heap && disposer.o.heap->size) {
-                disposer.o.heap->size->invoke(this);
+            sead::IDisposer* v17 = next->disposer;
+            if (v17 != nullptr) {
+                sead::Heap* heap = mSaveAreaHeap;
+                if (heap != nullptr && heap->getSize() > 0) {
+                    // Example usage of the disposer heap
+                    
+                }
             }
-            current_cb = current_cb->next;
-        } while (current_cb != end_cb);
+            next = mFinishLoadCbs.next(next);
+        } while (next != nullptr && next != mFinishLoadCbs.front());
     }
+    */
+    /*if (current_cb != end_cb) {
+        do {
+            auto& disposer = current_cb;
+
+            sead::Heap* disposerHeap = sead::Heap::getHeapFromDisposer(mDisposer);
+            
+            //if (disposer.o.heap && disposer.o.heap->size) {
+            //    disposer.o.heap->size->invoke(this);
+            //}
+            current_cb = end_cb; //current_cb->next;
+        } while (current_cb != end_cb);
+    } */
 
     // Set mState to zero
     mState = 0;
 
     // Initialize mGap14C with 0xFF
-    sead::MemUtil::fill(mGap14C, 0xFF, sizeof(mGap14C));
+    /*sead::MemUtil::fill(mGap14C, 0xFF, sizeof(mGap14C)); */
 
     // Clear bit 1 (value 2) in mField_1058[0]
     mField_1058[0] &= ~2u;

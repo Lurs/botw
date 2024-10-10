@@ -4,21 +4,24 @@
 #include <heap/seadDisposer.h>
 #include <mc/seadCoreInfo.h>
 #include <prim/seadSafeString.h>
+#include "KingSystem/GameData/gdtManager.h"
 #include "KingSystem/GameData/gdtTriggerParam.h"
 #include "container/seadListImpl.h"
 #include "filedevice/seadArchiveFileDevice.h"
 #include "filedevice/seadFileDevice.h"
 #include "thread/seadThread.h"
 #include "KingSystem/Resource/resHandle.h"
+#include <container/seadOffsetList.h>
 
 namespace ksys {
 
 // FIXME
-class SaveMgr {
+class SaveMgr  {
     SEAD_SINGLETON_DISPOSER(SaveMgr)
     SaveMgr();
     virtual ~SaveMgr();
 public:
+
      struct InitArg {
         sead::Heap* heap;
         u32 _8;
@@ -38,18 +41,22 @@ public:
     };
     static_assert(sizeof(InitArg) == 0x70);
 
-
-
+     
     void init(const InitArg& arg);
     void mountSaveData(const InitArg& arg);
     void loadGameSaveData();
     void SaveMgrThread(sead::Thread*, sead::MessageQueue::Element);
-    void SaveMgrThreadCmd1();
+   
     void SaveMgrThreadCmd2();
     void SaveMgrThreadCmd3();
+    
+    
 private:
     void function_x_2();
     void function_a();
+    void SaveMgrThreadCmd1();
+    
+
     sead::Heap* mSaveAreaHeap = nullptr;
     sead::Thread* mThread = nullptr;
     u32 mState = 3;
@@ -114,19 +121,28 @@ private:
     _FA8 test_FA0;
     u64 _FB8 = 0;
     u32 _FC0[10] = {0};
-    void* mField_FE8 = nullptr;
-    void* mField_FF0 = nullptr;
+    SaveMgr* mField_FE8; 
+    SaveMgr* mField_FF0;                  // Start of the disposer list
+      
+    //void* mField_FE8 = nullptr;
+    //void* mField_FF0 = nullptr;
     void* mField_FF8 = nullptr;
     
 
-    struct Callbacklist {
-      sead::ListNode* next;
-      sead::ListNode* prev;
-      void * ptr;
-      void * ptr2;
+
+    struct CallbackNode {
+        
+        sead::ListNode listNode;  // Add ListNode for OffsetList
+        sead::IDisposer* disposer;  // Pointer to disposer
     };
 
-    Callbacklist mFinishLoadCbs_1000;
+    // List of callback nodes, managed by sead::OffsetList
+    sead::OffsetList<CallbackNode> mFinishLoadCbs;
+
+    sead::IDisposer mDisposer;
+    sead::Heap* heap;
+
+    //Callbacklist mFinishLoadCbs_1000;
     
     sead::DelegateFunc* mInvokerAutoSave_1020 = nullptr; // invokerAutoSave = 0LL;
     sead::DelegateFunc* mInvoker8_1028= nullptr; //pInvoker8 = 0LL;
@@ -199,11 +215,11 @@ private:
   a1->field_19D8 = 0LL;
   a1->field_11E0 = &a1->field_11E8;
    */
-        
-      
 
 
 };
+
+
 
 
 }  // namespace ksys

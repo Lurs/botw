@@ -523,13 +523,13 @@ GDT_SET_IMPL_(setVec4f, detail::SetterTraits<sead::Vector4f>)
 
 #define GDT_RESET_IMPL_(NAME)                                                                      \
     bool Manager::NAME(const sead::SafeString& name) {                                             \
-        if (mBitFlags.isOn(BitFlag::_40000))                                                       \
+        if (mBitFlags.isOn(BitFlag::DisableParam1ToParamSync))                                                       \
             return false;                                                                          \
         return getParam().get1().NAME(name);                                                       \
     }                                                                                              \
     bool Manager::NAME##_(const sead::SafeString& name) { return NAME(name); }                     \
     bool Manager::NAME(const sead::SafeString& name, int sub_idx) {                                \
-        if (mBitFlags.isOn(BitFlag::_40000))                                                       \
+        if (mBitFlags.isOn(BitFlag::DisableParam1ToParamSync))                                                       \
             return false;                                                                          \
         return getParam().get1().NAME(name, sub_idx);                                              \
     }
@@ -547,7 +547,7 @@ GDT_RESET_IMPL_(resetVec4f)
 #undef GDT_RESET_IMPL_
 
 void Manager::incrementS32NoCheck(s32 value, const sead::SafeString& name) {
-    if (mBitFlags.isOn(BitFlag::_40000))
+    if (mBitFlags.isOn(BitFlag::DisableParam1ToParamSync))
         return;
 
     if (mBitFlags.isOn(BitFlag::_10000)) {
@@ -560,7 +560,7 @@ void Manager::incrementS32NoCheck(s32 value, const sead::SafeString& name) {
 }
 
 void Manager::incrementS32(s32 value, const sead::SafeString& name) {
-    if (mBitFlags.isOn(BitFlag::_40000))
+    if (mBitFlags.isOn(BitFlag::DisableParam1ToParamSync))
         return;
 
     if (mBitFlags.isOn(BitFlag::_10000)) {
@@ -602,7 +602,7 @@ void Manager::copyParamToParam1() {
 
 FlagHandle Manager::getRevivalFlagHandle(const sead::SafeString& object_name,
                                          const map::MubinIter& iter) {
-    if (mBitFlags.isOn(BitFlag::_40000))
+    if (mBitFlags.isOn(BitFlag::DisableParam1ToParamSync))
         return InvalidHandle;
 
     const sead::SafeString& map_name =
@@ -655,7 +655,7 @@ void Manager::allocRetryBuffer(sead::Heap* heap) {
 }
 
 void Manager::destroyRetryBuffer() {
-    if (mBitFlags.isOn(BitFlag::_80000))
+    if (mBitFlags.isOn(BitFlag::IsRestartFromGameOverMaybe))
         return;
 
     if (mRetryBuffer) {
@@ -1070,6 +1070,99 @@ void Manager::parseFloats(const sead::SafeString& str, f32* values, u32 n) {
             break;
     }
 }
+
+void Manager::calc() {
+    Manager::calc0();
+    auto flags = mBitFlags;
+
+    if (flags.isOn(Manager::BitFlag::NeedGimmickReset)) {
+        sead::Heap* debugHeap = ksys::util::getDebugHeap();
+        if (debugHeap) {
+            if (!this->mGimmickResetBuffer) {
+                sead::SafeString gimmickResetName("GimmickResetBuffer");
+                sead::FrameHeap* frameHeap = sead::FrameHeap::create(0x300000, gimmickResetName, debugHeap, 
+                    8, sead::Heap::cHeapDirection_Forward, false);
+                TriggerParam* gimmickResetMemory = new (frameHeap) TriggerParam;
+                gimmickResetMemory->copyAllFlags(*mFlagBuffer1,  frameHeap, false);
+                //void copyAllFlags(const TriggerParam& src, sead::Heap* heap, bool init_reset_data);
+                frameHeap->adjust();
+            }
+            mGimmickResetBuffer->copyAndInit(*mFlagBuffer1, true, false, false);
+            //flags &= ~(Manager::BitFlag::NeedGimmickReset | Manager::BitFlag::_1);
+        }
+    }
+
+    if (flags.isOn(Manager::BitFlag::NeedCopyGimmickParam)) {
+        if (mGimmickResetBuffer) {
+            mFlagBuffer->copyAndInit( *mGimmickResetBuffer, true, false, false);
+            mFlagBuffer1->copyAndInit( *mGimmickResetBuffer, true, false, false);
+            //flags &= ~0x21;
+        }
+    } else if (flags.isOn(Manager::BitFlag::_40)) {
+        if (mGimmickResetBuffer) {
+            mFlagBuffer->copyAndInit( *mGimmickResetBuffer, true, true, false);
+            mFlagBuffer1->copyAndInit(*mGimmickResetBuffer, true, true, false);
+            //flags &= ~(Manager::BitFlag::_40 | Manager::BitFlag::_1);
+        }
+    }
+
+    mBitFlags = flags;
+
+    if (flags.isOn(Manager::BitFlag::RequestResetAllFlagsToInitial)) {
+        mFlagBuffer1->resetAllFlagsToInitialValues();
+        mFlagBuffer->mNumBoolFlagsPerCategory0.fill(0);
+        /*for (auto& callback : mResetSignal.mList.robustEnd()) {
+            callback->invoke();
+        }*/
+        if (mResetSignal.getNumSlots()>0) {
+            mResetSignal.emit(nullptr);
+        }
+        //this->flags &= ~(Manager::BitFlag::IsChangedByDebugMaybe | Manager::BitFlag::RequestResetAllFlagsToInitial | Manager::Flags_1);
+    }
+
+    if (flags.isOn(Manager::BitFlag::NeedReset)) {
+        int numReset =  1; //mFlagBuffer1->resetFlagsAccordingToPolicy( static_cast<sead::BitFlag32> (mResetFlags), this->mNumFlagsToReset);
+        int resetFlagsAccordingToPolicy(sead::BitFlag32 policy, int skip);
+        this->mNumFlagsToReset = numReset;
+        if (numReset == 0) {
+            //this->mBitFlags &= ~(Manager::BitFlag::NeedReset | Manager::BitFlag::_1);
+            //this->mResetFlags.set(0);
+        }
+    }
+
+    Manager::calc1();
+
+    flags = this->mBitFlags;
+    if ((flags.isOff(Manager::BitFlag::DisableParam1ToParamSync) && flags.isOff(Manager::BitFlag::_1))) {
+        mFlagBuffer->copyAndInit( *mFlagBuffer1, false, false, false);
+    }
+
+    if ((flags.isOff(Manager::BitFlag::DoNotResetToInitialFromRadarMgr) && flags.isOff(Manager::BitFlag::DisableParam1ToParamSync) && flags.isOff(Manager::BitFlag::_1)))  {
+        //this->mFlagBuffer->mBitFlags &= ~5;
+        //SaveMgr* sm = SaveMgr::sInstance;
+       // if (sm && (SaveMgr::someCheck(sm) & 1) != 0) {
+            //SaveMgr::x_7(sm);
+           // if ((this->flags & Manager::BitFlag::_2) == 0) {
+           //     return;
+           // }
+        //}
+    }
+
+    //if(mBitFlags.isOn(Manager::BitFlag::_2) ) {
+        //SaveMgr::__auto8(SaveMgr::sInstance, &this->str);
+       // int S32FlagByHash = TriggerParam::getS32FlagByHash(this->flagBuffer, this->trackerBlockSaveNumberFlagCrc32);
+        //if (S32FlagByHash) {
+            //if ((SaveMgr::someCheck(SaveMgr::sInstance) & 1) != 0) {
+            //    SaveMgr::someStuff(SaveMgr::sInstance, S32FlagByHash);
+            //}
+        //}
+        //this->flags = (this->flags & 0xFFEFFFFD) | Manager::BitFlag::DoNotResetToInitialFromRadarMgr;
+        //this->flagBuffer->flags |= 4;
+        //this->flags &= ~(Manager::BitFlag::IsChangedByDebugMaybe | Manager::BitFlag::RequestResetAllFlagsToInitial | Manager::BitFlag::_1);
+    //}
+
+}
+
 
 namespace {
 template <typename T>

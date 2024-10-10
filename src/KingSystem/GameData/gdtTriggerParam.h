@@ -70,6 +70,7 @@ public:
     void allocS32s(s32 size, sead::Heap* heap);
     void copyAllFlags(const TriggerParam& src, sead::Heap* heap, bool init_reset_data);
     void copyPermanentFlags(const TriggerParam& src, sead::Heap* heap);
+    void copyAndInit(const TriggerParam& src, bool set_all_flags, bool y, bool z);
 
     FlagType getFlagType(const sead::SafeString& name) const;
 
